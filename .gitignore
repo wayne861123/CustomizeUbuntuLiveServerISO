@@ -1,0 +1,17 @@
+# ISO files
+*.iso
+
+# Temporary mount/extraction
+/tmp/iso_*
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor swaps
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
