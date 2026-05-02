@@ -260,6 +260,8 @@ cmd_download() {
     local dist arch
     if [[ -f "$DEFAULT_TARGET_FILE" ]]; then
         source "$DEFAULT_TARGET_FILE"
+        dist="$DIST"
+        arch="$ARCH"
     else
         dist="$HOST_DIST"
         arch="$HOST_ARCH"
