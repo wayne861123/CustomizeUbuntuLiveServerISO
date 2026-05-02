@@ -345,7 +345,8 @@ show_menu() {
     echo -e "  ${BOLD}2.${NC} 列出全部 package"
     echo -e "  ${BOLD}3.${NC} 選擇欲安裝的 package（Plan 模式）"
     echo -e "  ${BOLD}4.${NC} 查看下載狀態"
-    echo -e "  ${BOLD}5.${NC} 執行下一步（建構 ISO）"
+    echo -e "  ${BOLD}5.${NC} 設定 autoinstall（user-data + meta-data）"
+    echo -e "  ${BOLD}6.${NC} 執行下一步（建構 ISO）"
     echo ""
     echo -e "  ${CYAN}0.${NC} 離開"
     echo ""
@@ -364,7 +365,8 @@ main() {
             2) cmd_list_packages ;;
             3) cmd_select_packages ;;
             4) cmd_download_status ;;
-            5) cmd_next_step ;;
+            5) bash "$SCRIPTS_DIR/autoinstall.sh" --interactive ;;
+            6) cmd_next_step ;;
             0) echo ""; log_info "Bye!"; exit 0 ;;
             *) log_error "無效選項，請重新選擇";;
         esac
