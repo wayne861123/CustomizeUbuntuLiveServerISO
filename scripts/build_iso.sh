@@ -59,10 +59,10 @@ detect_volume_id() {
     local volid="CustomUbuntu"
     if [[ -f "$SOURCE_ISO_DIR/.disk/info" ]]; then
         volid=$(cat "$SOURCE_ISO_DIR/.disk/info" 2>/dev/null | head -1)
-        # 移除單引號、雙引號、特殊字元
-        volid=$(echo "$volid" | sed "s/['\"]//g" | xargs echo)
+        # 移除單引號、雙引號、特殊字元，轉大寫，符合 ISO 9660
+        volid=$(echo "$volid" | sed "s/['\"]//g" | xargs echo | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9._-]/_/g')
     fi
-    echo "${volid}" | cut -c1-32
+    echo "${volid:-CUSTOMUBUNTU}" | cut -c1-32
 }
 
 main() {
@@ -151,12 +151,9 @@ main() {
         xorriso_cmd[$xc_idx]="bin_path=$eltorito_img"; ((xc_idx++))
     fi
 
-    # UEFI boot
-    if [[ "$has_uefi" == "1" ]] && [[ -n "$efi_path" ]] && [[ -f "$SOURCE_ISO_DIR/$efi_path" ]]; then
-        xorriso_cmd[$xc_idx]="-boot_image"; ((xc_idx++))
-        xorriso_cmd[$xc_idx]="any"; ((xc_idx++))
-        xorriso_cmd[$xc_idx]="efi_boot_part=--efi-boot-image"; ((xc_idx++))
-    fi
+    # UEFI boot - for ISO images, EFI boot files just need to be in /EFI/boot/
+    # No explicit efi_boot_part needed (that's for USB sticks)
+    # The mapped /EFI directory provides UEFI boot automatically
 
     if [[ "$dry_run" == "1" ]]; then
         echo -e "${CYAN}xorriso 指令:${NC}"
