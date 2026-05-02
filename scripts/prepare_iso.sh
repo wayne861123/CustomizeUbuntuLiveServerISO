@@ -1,5 +1,5 @@
 #!/bin/bash
-# prepare_iso.sh - 掛載來源 ISO 並複製內容到 custom-iso 目錄
+# prepare_iso.sh - 用 bsdtar 解壓縮 ISO 內容到 custom-iso 目錄
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,7 +8,6 @@ DATA_DIR="$PROJECT_DIR/data"
 CONFIG_FILE="$DATA_DIR/config.conf"
 
 # Directories
-SOURCE_ISO_DIR="$PROJECT_DIR/source-iso"
 CUSTOM_ISO_DIR="$PROJECT_DIR/custom-iso"
 
 # Colors
@@ -26,23 +25,21 @@ usage() {
 用法: $0 [選項]
 
 說明:
-  掛載來源 ISO 並複製內容到 custom-iso 目錄。
-
+  使用 bsdtar 解壓縮 ISO 內容到 custom-iso 目錄。
   會讀取 data/config.conf 中的 SOURCE_ISO 設定。
-  掛載點: source-iso/
-  複製目標: custom-iso/
+
+  輸出目錄: custom-iso/
 
 選項:
   --iso <path>    直接指定 ISO 路徑（忽略 config）
-  --unmount       卸載已掛載的 ISO 並清除暫存目錄
-  --clean         清除 custom-iso 目錄（保留 source-iso）
+  --re-extract    強制重新解壓（覆寫 custom-iso）
+  --clean         清除 custom-iso 目錄
   -h, --help      顯示說明
 
 範例:
-  $0                    # 使用 config.conf 中的設定
+  $0                    # 解壓縮 ISO（首次）
   $0 --iso /path/to.iso # 指定 ISO 路徑
-  $0 --unmount          # 卸載並清除
-  $0 --clean            # 清除 custom-iso
+  $0 --re-extract       # 重新解壓（覆寫）
 
 EOF
     exit 1
@@ -62,67 +59,48 @@ load_config() {
         log_error "ISO 檔案不存在: $SOURCE_ISO"
         exit 1
     fi
-}
 
-check_mounted() {
-    if mountpoint -q "$SOURCE_ISO_DIR" 2>/dev/null; then
-        return 0
-    fi
-    return 1
-}
-
-do_mount() {
-    log_info "掛載 ISO: $SOURCE_ISO"
-
-    # Create mount point
-    mkdir -p "$SOURCE_ISO_DIR"
-
-    # Check if already mounted
-    if check_mounted; then
-        log_warn "ISO 已掛載於: $SOURCE_ISO_DIR"
-        return 0
-    fi
-
-    # Mount (read-only)
-    if ! mount -o loop,ro "$SOURCE_ISO" "$SOURCE_ISO_DIR"; then
-        log_error "掛載失敗"
+    # Check bsdtar exists
+    if ! command -v bsdtar &> /dev/null; then
+        log_error "缺少 bsdtar，請安裝: sudo apt install libarchive-tools"
         exit 1
     fi
-
-    log_info "已掛載於: $SOURCE_ISO_DIR"
 }
 
-do_copy() {
-    log_info "複製 ISO 內容到: $CUSTOM_ISO_DIR"
+do_extract() {
+    local force="$1"
 
-    # Create target directory
+    # Check if already extracted
+    if [[ -d "$CUSTOM_ISO_DIR/casper" ]] && [[ "$force" != "1" ]]; then
+        log_warn "custom-iso/ 已存在"
+        log_info "使用 --re-extract 強制重新解壓"
+        return 0
+    fi
+
+    if [[ "$force" == "1" ]]; then
+        log_info "強制重新解壓..."
+        rm -rf "$CUSTOM_ISO_DIR"
+    fi
+
+    log_info "解壓 ISO: $SOURCE_ISO"
+    log_info "目的地: $CUSTOM_ISO_DIR"
+
     mkdir -p "$CUSTOM_ISO_DIR"
 
-    # Sync files (preserve permissions, follow symlinks)
-    if ! rsync -aHAX "$SOURCE_ISO_DIR/" "$CUSTOM_ISO_DIR/"; then
-        log_error "複製失敗"
+    # Use bsdtar to extract ISO content
+    if ! bsdtar -xf "$SOURCE_ISO" -C "$CUSTOM_ISO_DIR" 2>&1; then
+        log_error "解壓失敗"
+        rm -rf "$CUSTOM_ISO_DIR"
         exit 1
     fi
 
-    # Count files
-    local file_count=$(find "$CUSTOM_ISO_DIR" -type f | wc -l)
-    log_info "複製完成，共 $file_count 個檔案"
-}
+    local file_count=$(find "$CUSTOM_ISO_DIR" -type f 2>/dev/null | wc -l)
+    log_info "解壓完成，共 $file_count 個檔案"
 
-do_unmount() {
-    log_info "卸載 ISO..."
-
-    if check_mounted; then
-        umount "$SOURCE_ISO_DIR"
-        log_info "已卸載: $SOURCE_ISO_DIR"
-    else
-        log_warn "ISO 未掛載"
-    fi
-
-    # Clean up mount point
-    if [[ -d "$SOURCE_ISO_DIR" ]]; then
-        rm -rf "$SOURCE_ISO_DIR"
-        log_info "已清除: $SOURCE_ISO_DIR"
+    # Count casper size
+    if [[ -f "$CUSTOM_ISO_DIR/casper/ubuntu-server-minimal.squashfs" ]]; then
+        local squashfs_size=$(du -h "$CUSTOM_ISO_DIR/casper/ubuntu-server-minimal.squashfs" | cut -f1)
+        log_info "主要系統映像: ubuntu-server-minimal.squashfs ($squashfs_size)"
     fi
 }
 
@@ -138,7 +116,8 @@ do_clean() {
 
 main() {
     local iso_path=""
-    local action="mount+copy"
+    local re_extract=0
+    local do_clean_flag=0
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -146,12 +125,12 @@ main() {
                 SOURCE_ISO="$2"
                 shift 2
                 ;;
-            --unmount)
-                action="unmount"
+            --re-extract)
+                re_extract=1
                 shift
                 ;;
             --clean)
-                action="clean"
+                do_clean_flag=1
                 shift
                 ;;
             -h|--help)
@@ -164,19 +143,13 @@ main() {
         esac
     done
 
-    case "$action" in
-        mount+copy)
-            load_config
-            do_mount
-            do_copy
-            ;;
-        unmount)
-            do_unmount
-            ;;
-        clean)
-            do_clean
-            ;;
-    esac
+    if [[ "$do_clean_flag" == "1" ]]; then
+        do_clean
+        return
+    fi
+
+    load_config
+    do_extract "$re_extract"
 }
 
 main "$@"
