@@ -132,8 +132,7 @@ main() {
         [[ -f "$SOURCE_ISO_DIR/boot/isolinux/isolinux.bin" ]] && eltorito_img="boot/isolinux/isolinux.bin"
     fi
 
-    # Build xorriso command (compatible with xorriso 1.5.x)
-    # Note: -volid must come BEFORE -boot_image options (xorriso 1.5.x bug)
+    # Build xorriso command (xorriso 1.5.x)
     local -a xorriso_cmd
     xorriso_cmd[0]="xorriso"
     xorriso_cmd[1]="-outdev"
@@ -141,7 +140,6 @@ main() {
     xorriso_cmd[3]="-map"
     xorriso_cmd[4]="$SOURCE_ISO_DIR/"
     xorriso_cmd[5]="/"
-    # -volid first (required before -boot_image in xorriso 1.5.x)
     xorriso_cmd[6]="-volid"
     xorriso_cmd[7]="$volid"
     local xc_idx=8
@@ -154,9 +152,11 @@ main() {
     fi
 
     # UEFI boot
-    # Note: efi_boot_part=--efi-boot-image conflicts with -volid ordering in xorriso 1.5.x
-    # EFI boot works via the mapped /EFI directory without explicit boot_image params
-    :
+    if [[ "$has_uefi" == "1" ]] && [[ -n "$efi_path" ]] && [[ -f "$SOURCE_ISO_DIR/$efi_path" ]]; then
+        xorriso_cmd[$xc_idx]="-boot_image"; ((xc_idx++))
+        xorriso_cmd[$xc_idx]="any"; ((xc_idx++))
+        xorriso_cmd[$xc_idx]="efi_boot_part=--efi-boot-image"; ((xc_idx++))
+    fi
 
     if [[ "$dry_run" == "1" ]]; then
         echo -e "${CYAN}xorriso 指令:${NC}"
