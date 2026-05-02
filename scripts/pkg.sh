@@ -272,7 +272,7 @@ cmd_download() {
 
     # Create work directory
     rm -rf "$TMP_DIR"
-    mkdir -p "$TMP_DIR/apt"
+    mkdir -p "$TMP_DIR/apt" "$TMP_DIR/lists" "$TMP_DIR/cache" "$TMP_DIR/debs"
     local apt_sources="$TMP_DIR/apt/sources.list"
     local apt_prefs="$TMP_DIR/apt/preferences"
 
@@ -280,11 +280,14 @@ cmd_download() {
     build_sources_list "$dist" "$arch" "$apt_sources"
 
     log_info "更新套件列表..."
-    # Update with target sources
-    if ! APT_CONFIG="$apt_sources" apt-get update \
+    # Update with target sources (isolated environment)
+    if ! apt-get update \
         -o Dir::Etc::SourceList="$apt_sources" \
         -o Dir::Etc::SourceParts="-" \
+        -o Dir::State::Lists="$TMP_DIR/lists" \
+        -o Dir::Cache::Archives="$TMP_DIR/cache" \
         -o APT::Get::List-Cleanup="0" \
+        -o Debug::NoLocking=1 \
         2>&1 | tail -5; then
         log_error "apt-get update 失敗"
         exit 1
@@ -303,12 +306,14 @@ EOF
     local download_failed=0
     for pkg in "${packages[@]}"; do
         log_info "下載: $pkg"
-        if ! APT_CONFIG="$apt_sources" APT_CONFIG="$apt_prefs" apt-get install -y \
+        if ! apt-get install -y \
             --download-only \
             -o Dir::Etc::SourceList="$apt_sources" \
             -o Dir::Etc::Preferences="$apt_prefs" \
+            -o Dir::State::Lists="$TMP_DIR/lists" \
             -o Dir::Cache::Archives="$TMP_DIR/debs" \
             -o DPkg::Options::="--force-depends" \
+            -o Debug::NoLocking=1 \
             "$pkg" 2>&1; then
             log_error "下載失敗: $pkg"
             download_failed=1
